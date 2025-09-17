@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1, interactive-widget=resizes-content" name="viewport"/>
+<title>Falling Scrabble — Mobile v5</title>
+<style>
+  :root{ --bg:#0f172a;--panel:#0b1220;--ink:#e5e7eb;--muted:#94a3b8; --tile:#fffbe6;--tile-edge:#d4c77a; --t-shadow:rgba(0,0,0,.35); --dbl:#00e5ff; --tpl:#ff3b30; --accent:#22c55e; --warn:#f59e0b; }
+  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+  html,body{height:100%;}
+  body{margin:0;background:radial-gradient(1200px 800px at 70% -10%, #1e293b 0%, var(--bg) 45%);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial;display:grid;grid-template-rows:auto 1fr auto;}
+  header,footer{padding:10px 12px}
+  header{display:flex;gap:8px;align-items:center;flex-wrap:wrap;position:sticky;top:0;background:linear-gradient(180deg, rgba(15,23,42,0.96), rgba(15,23,42,0.75));z-index:10}
+  .badge{padding:6px 10px;border:1px solid #334155;border-radius:999px;background:#0b1220;font-weight:700;font-size:12px}
+  .score{border-color:#14532d}
+  .time{border-color:#1d4ed8}
+  .rack{border-color:#8b5cf6}
+  .controls{margin-left:auto;display:flex;gap:8px}
+  button{appearance:none;border:1px solid #334155;background:#1f2937;color:var(--ink);padding:10px 14px;border-radius:12px;cursor:pointer;font-weight:800;font-size:14px}
+  button.primary{background:#14532d;border-color:#166534}
+  button[disabled]{opacity:.5;cursor:not-allowed}
+  main{display:grid;grid-template-rows:1fr auto;gap:10px;padding:10px}
+  canvas{width:100%;height:calc(var(--vh,1vh)*55);background:linear-gradient(180deg,#0b1220,#0a0f1b);border:1px solid #1f2937;border-radius:16px;box-shadow:0 24px 48px rgba(0,0,0,.35);touch-action:manipulation}
+  .panel{background:var(--panel);border:1px solid #1f2937;border-radius:16px;padding:10px;display:grid;gap:10px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .rackTiles{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+  .tile{aspect-ratio:1/1;background:var(--tile);border:2px solid var(--tile-edge);border-radius:12px;box-shadow:0 10px 22px var(--t-shadow), inset 0 2px 0 #fff8;display:grid;place-items:center;position:relative;color:#111827}
+  .tile .letter{font-weight:900;font-size:20px}
+  .tile .points{position:absolute;right:6px;bottom:4px;font-weight:800;font-size:9px}
+  .tile.dbl{outline:6px solid var(--dbl);box-shadow:0 0 10px var(--dbl);}
+  .tile.tpl{outline:6px solid var(--tpl);box-shadow:0 0 10px var(--tpl);}
+  .muted{color:var(--muted);font-size:13px;line-height:1.35}
+  .log{height:110px;overflow:auto;background:#0b1220;border:1px solid #334155;border-radius:10px;padding:8px;white-space:pre-wrap}
+  footer{display:flex;justify-content:center;gap:12px;color:#94a3b8;font-size:12px}
+  /* Compose area inline */
+  .composeBox{background:#0b1220;border:1px dashed #334155;border-radius:12px;padding:10px;display:grid;gap:8px}
+  .composeBox h3{margin:0}
+  .composeBox .row{display:flex;gap:8px}
+  input[type="text"]{flex:1;min-width:0;padding:12px 12px;background:#0a0f1b;color:var(--ink);border:1px solid #334155;border-radius:12px;font-size:14px}
+  input[disabled]{opacity:.6}
+  .rackTiles.compact{grid-template-columns:repeat(7,28px);gap:8px;min-height:112px;overflow:auto;padding:6px;border:1px dashed #334155;border-radius:10px}
+  .tile.compact .letter{font-size:11px}
+  .tile.compact .points{font-size:7px}
+  .hint{font-size:12px;color:#cbd5e1}
+  .pill{font-size:12px;color:#cbd5e1}
+  .hidden{display:none !important}
+  progress{height:12px}
+
+  /* Focus styling for combined Rack+Compose block */
+  #rackCompose { position: relative; }
+  #rackCompose.focused {
+    box-shadow: 0 0 0 3px rgba(34,197,94,0.35), 0 0 24px rgba(34,197,94,0.25);
+    transition: box-shadow .25s ease;
+  }
+  /* Flash message overlay */
+  #flashMsg{
+    position: fixed;
+    left:50%; top: 20%;
+    transform: translateX(-50%);
+    background: rgba(2,6,23,0.85);
+    border: 2px solid #22c55e;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-weight: 900;
+    font-size: 18px;
+    color: #e5e7eb;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 100;
+  }
+  #flashMsg.show{
+    opacity: 1;
+    animation: flashpop 1100ms ease forwards;
+  }
+  @keyframes flashpop {
+    0% { transform: translateX(-50%) scale(0.95); opacity: 0; }
+    15% { transform: translateX(-50%) scale(1.02); opacity: 1; }
+    85% { transform: translateX(-50%) scale(1.00); opacity: 1; }
+    100% { transform: translateX(-50%) scale(0.98); opacity: 0; }
+  }
+  /* Smaller compose subsection overrides */
+  #composeBox input[type="text"]{ font-size:15px; padding:6px 8px;  text-transform: uppercase; }
+  #composeBox .row button{ padding:6px 8px; font-size:12px; }
+  #chosenRack{ min-height:72px; }
+
+  #lastWordBadge{ border-color:#334155; }
+  #lastWordBadge.good{ border-color:#166534; }
+  #lastWordBadge.bad{ border-color:#7f1d1d; }
+
+/* Last word badge styles */
+.last-badge{
+  margin: 6px 0 2px 0;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.flash-badge{
+  animation: lastPulse 0.6s ease-in-out;
+}
+@keyframes lastPulse{
+  0% { transform: scale(1); opacity: 0.8; }
+  25% { transform: scale(1.05); opacity: 1; }
+  50% { transform: scale(1); }
+  75% { transform: scale(1.05); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+#composeInput { text-transform: uppercase; }
+
+
+  /* Compose zone indicator */
+  .composeBox .zone-indicator{
+    display:flex; align-items:center; gap:8px;
+    font-size:12px; color:#cbd5e1;
+  }
+  .composeBox .zone-dot{
+    width:10px; height:10px; border-radius:999px; background:#64748b; box-shadow:0 0 0 2px rgba(148,163,184,.25);
+  }
+  .composeBox.zone-blue{ border-color:#1d4ed8; box-shadow:0 0 0 3px rgba(29,78,216,.25), 0 0 22px rgba(29,78,216,.25) inset; }
+  .composeBox.zone-red{ border-color:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,.25), 0 0 22px rgba(239,68,68,.25) inset; }
+  .composeBox.zone-blue .zone-dot{ background:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.3); }
+  .composeBox.zone-red .zone-dot{ background:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,.3); }
+  .composeBox .zone-label{ font-weight:700; letter-spacing:.02em; }
+  .composeBox .zone-timer{ font-variant-numeric: tabular-nums; opacity:.9; }
+
+</style>
+</head>
+<body>
+<header>
+<span class="badge score" id="scoreBadge">Score: 0</span>
+<span class="badge time" id="timeBadge">Time: 150s</span>
+<span class="badge rack" id="rackBadge">Rack: 0/7</span>
+<span class="badge" id="lastWordBadge">Last: —</span><div class="controls">
+<button id="resetBtn">Reset</button>
+</div>
+</header>
+<main>
+<canvas aria-label="Falling tiles. Tap a tile or type its letter to collect." id="play"></canvas>
+<section class="panel" id="rackCompose"><h3 style="margin:0">Rack</h3><div class="row" id="rackControlsRow"><button id="btnAlpha" title="Alphabetize rack (requires 7 letters)">A→Z</button><button id="btnShuffle" title="Randomize rack order (requires 7 letters)">Shuffle</button></div><div class="rackTiles" id="rack"></div><div class="composeBox" id="composeBox">
+<h3>Compose</h3>
+<div class="row">
+<input autocomplete="off" disabled="" id="composeInput" inputmode="latin" placeholder="Type your word"/>
+<button class="primary" disabled="" id="submitWord">Submit</button>
+</div>
+<div class="zone-indicator" id="composeZoneIndicator" aria-live="polite">
+  <span class="zone-dot" id="zoneDot"></span>
+  <span class="zone-label" id="zoneLabel">Word Multiplier: Single</span>
+  <span class="zone-timer" id="zoneTimer"></span>
+</div>
+
+<div id="composeProjRow" class="row"><span class="pill" id="projectedScore">Projected: 0</span></div>
+<div class="rackTiles compact" id="chosenRack"></div>
+<p class="hint" id="composeHint">Need 7 letters in rack to compose.</p>
+</div></section><section class="panel">
+<div class="row">
+</div>
+<div aria-live="polite" class="log" id="log"></div>
+</section></main>
+<section class="panel" id="dictLoaderPanel"><h3 style="margin:0">Dictionary</h3><div class="row">
+<button id="loadDict">Load Dictionary</button>
+<input accept=".txt,.json" hidden="" id="dictFile" type="file"/>
+<span class="hidden" id="dictStatus"></span></div><div class="row">
+<progress id="dictProg" max="1" style="flex:1;" value="0"></progress>
+<span class="pill" id="dictCount">0</span>
+</div></section><footer><span id="footerMsg">Ready.</span></footer>
+<script>
+'use strict';
+
+function setLastWordBadge(word, delta, bingoBonus){
+  try{
+    const b=document.getElementById('lastWordBadge');
+    if(!b) return;
+    const sign = delta>=0 ? "+" : "−";
+    const absd = Math.abs(Math.round(delta));
+    const bingo = (bingoBonus&&bingoBonus>0) ? ` (+${bingoBonus} BINGO)` : "";
+    b.textContent = `Last: ${word} ${sign}${absd}${bingo}`;
+    b.classList.remove('good','bad');
+    if(delta>0){ b.classList.add('good'); }
+    else if(delta<0){ b.classList.add('bad'); }
+  }catch(_){}
+}
+
+
+function focusRackCompose(on){
+  const panel=document.getElementById('rackCompose');
+  if(!panel) return;
+  if(on){
+    panel.classList.add('focused');
+    try{
+      const header=document.querySelector('header');
+      const h=header? header.getBoundingClientRect().height : 0;
+      const rect=panel.getBoundingClientRect();
+      const top=window.scrollY + rect.top - h - 6;
+      window.scrollTo({ top: Math.max(0, top), behavior:'smooth' });
+    }catch(_){ }
+  }else{
+    panel.classList.remove('focused');
+  }
+}
+function showFlash(text, good=true){
+  const el=document.getElementById('flashMsg');
+  if(!el) return;
+  el.textContent=text;
+  el.classList.remove('show');
+  void el.offsetWidth; // reflow
+  el.style.borderColor = good ? '#22c55e' : '#ef4444';
+  el.classList.add('show');
+  setTimeout(()=>{ el.classList.remove('show') }, 1200);
+}
+
+function setVH(){ document.documentElement.style.setProperty('--vh', window.innerHeight * 0.01 + 'px'); }
+setVH(); window.addEventListener('resize', setVH);
+
+const LETTERS=[{L:'A',c:9,p:1},{L:'B',c:2,p:3},{L:'C',c:2,p:3},{L:'D',c:4,p:2},{L:'E',c:12,p:1},{L:'F',c:2,p:4},{L:'G',c:3,p:2},{L:'H',c:2,p:4},{L:'I',c:9,p:1},{L:'J',c:1,p:8},{L:'K',c:1,p:5},{L:'L',c:4,p:1},{L:'M',c:2,p:3},{L:'N',c:6,p:1},{L:'O',c:8,p:1},{L:'P',c:2,p:3},{L:'Q',c:1,p:10},{L:'R',c:6,p:1},{L:'S',c:4,p:1},{L:'T',c:6,p:1},{L:'U',c:4,p:1},{L:'V',c:2,p:4},{L:'W',c:2,p:4},{L:'X',c:1,p:8},{L:'Y',c:2,p:4},{L:'Z',c:1,p:10}];
+const POINTS=Object.fromEntries(LETTERS.map(x=>[x.L,x.p]));
+const DISTRIB_BAG=LETTERS.flatMap(x=>Array.from({length:x.c},()=>x.L));
+const BASE_FREQ=Object.fromEntries(LETTERS.map(x=>[x.L,x.c]));
+const LETTER_WEIGHT=Object.fromEntries(LETTERS.map(x=>[x.L,1]));
+const VOWELS=new Set(['A','E','I','O','U']);
+const MAX_TIME=150,START_SCORE=0,RACK_MAX=7,MULTIPLIER_PROB={dbl:.10,tpl:.04},SPAWN_EVERY=900,MAX_ON_SCREEN=7,SPEED_MIN=160,SPEED_MAX=340,MULT_SPEED={1:1,2:1.35,3:1.6},TILE_SIZE=72;
+const canvas=document.getElementById('play'); const ctx=canvas.getContext('2d');
+const scoreBadge=document.getElementById('scoreBadge'); const timeBadge=document.getElementById('timeBadge'); const rackBadge=document.getElementById('rackBadge'); const rackEl=document.getElementById('rack'); const logEl=document.getElementById('log'); const resetBtn=document.getElementById('resetBtn'); const dictBtn=document.getElementById('loadDict'); const dictFile=document.getElementById('dictFile'); const dictStatus=document.getElementById('dictStatus'); const footerMsg=document.getElementById('footerMsg'); const btnAlpha=document.getElementById('btnAlpha'); const btnShuffle=document.getElementById('btnShuffle'); const composeInput=document.getElementById('composeInput'); const chosenRack=document.getElementById('chosenRack'); const submitWordBtn=document.getElementById('submitWord'); const composeHint=document.getElementById('composeHint'); const dictProg=document.getElementById('dictProg'); const dictCount=document.getElementById('dictCount');
+
+let W=0,H=0; resizeCanvas();
+let running=true, elapsed=0, gameStart=null, lastTS=performance.now(), lastSecondShown=-1, spawnAccum=0, tiles=[], rack=[], score=START_SCORE, bag=shuffle([...DISTRIB_BAG]), bagIndex=0, dictionary=new Set(), gameReady=false, lastComposeEnabled=false;
+
+function resizeCanvas(){ const dpr=window.devicePixelRatio||1; const cssW=canvas.clientWidth, cssH=canvas.clientHeight; canvas.width=Math.floor(cssW*dpr); canvas.height=Math.floor(cssH*dpr); ctx.setTransform(dpr,0,0,dpr,0,0); W=cssW; H=cssH; }
+window.addEventListener('resize', resizeCanvas);
+function rand(a,b){return Math.random()*(b-a)+a} function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]] } return a }
+function formatScore(n){ return `Score: ${Math.round(n)}` }
+function genId(){ try{ if(crypto && crypto.randomUUID) return crypto.randomUUID(); }catch(_){ } return 'id-'+Math.random().toString(36).slice(2) }
+function coreLog(line){ try{ console.log(line) }catch(_){ } if(!logEl) return; const atBottom=Math.abs(logEl.scrollTop+logEl.clientHeight-logEl.scrollHeight)<4; logEl.textContent+=(logEl.textContent?"\n":"")+String(line); if(atBottom) logEl.scrollTop=logEl.scrollHeight }
+
+function log(line){
+  try{ coreLog(line); }catch(e){}
+  try{
+    // Parse lines like: "✅ WORD +12" or "❌ WORD -7 (not in dictionary)"
+    const m = String(line).match(/^\s*([✅❌])\s*([A-Z]+)\s*([+-]?)\s*(\d+)(?:.*BINGO.*?(\d+))?/);
+    if(m){
+      const sym = m[1];
+      const word = m[2];
+      const sign = m[3]||'+';
+      const pts = parseInt(m[4],10)||0;
+      const bonus = m[5] ? parseInt(m[5],10) : 0;
+      const delta = sym==='✅' ? (sign==='-'?-pts:pts) + bonus : (sign==='-'?-pts:pts); // ❌ usually negative
+      if(typeof setLastWordBadge==='function') setLastWordBadge(word, delta, bonus);
+    }
+  }catch(e){}
+}
+
+
+function getCSS(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim() }
+
+let bingoParts=[]; function spawnBingoRain(){ const x=W/2,y=-40,vy=rand(160,220),life=(H+120)/vy+.5; bingoParts.push({x,y,vy,text:'BINGO',life}) }
+let catchPops=[]; function spawnCatchPop(t){ const color=t.mult===3?getCSS('--tpl'):(t.mult===2?getCSS('--dbl'):getCSS('--accent')||'#22c55e'); catchPops.push({x:t.x,y:t.y,life:.5,max:.5,letter:t.letter,color}) }
+
+function lettersOnScreenSet(){ const s=new Set(); for(const t of tiles) s.add(t.letter); return s }
+function availableLettersForSpawn(){ const present=lettersOnScreenSet(); const all=LETTERS.map(x=>x.L); return all.filter(L=>!present.has(L)) }
+function nextLetterUnique(){ const options=availableLettersForSpawn(); if(options.length===0) return null; let total=0; const weights=options.map(L=>{ const w=(BASE_FREQ[L]||1)*(LETTER_WEIGHT[L]||1); total+=w; return w }); if(total<=0) return options[(Math.random()*options.length)|0]; let r=Math.random()*total; for(let i=0;i<options.length;i++){ r-=weights[i]; if(r<=0) return options[i] } return options[options.length-1] }
+function canSpawn(){ return tiles.length<MAX_ON_SCREEN && availableLettersForSpawn().length>0 }
+function spawnTile(){ if(!canSpawn()) return; const L=nextLetterUnique(); if(!L) return; const mult=Math.random()<MULTIPLIER_PROB.tpl?3:(Math.random()<MULTIPLIER_PROB.dbl?2:1); let speed=rand(SPEED_MIN,SPEED_MAX)*(H/600); speed*=MULT_SPEED[mult]||1; const x=rand(W*.25,W*.75); const tile={x,y:-30,vx:rand(-20,20),vy:speed,letter:L,points:POINTS[L],mult,id:genId()}; tiles.push(tile) }
+function roundRect(ctx,x,y,w,h,r){ const rr=Math.min(r,w/2,h/2); ctx.moveTo(x+rr,y); ctx.arcTo(x+w,y,x+w,y+h,rr); ctx.arcTo(x+w,y+h,x,y+h,rr); ctx.arcTo(x,y+h,x,y,rr); ctx.arcTo(x,y,x+w,y,rr) }
+function drawTile(t){ const size=TILE_SIZE,r=10; ctx.save(); ctx.translate(t.x,t.y); ctx.fillStyle='rgba(0,0,0,.35)'; ctx.beginPath(); roundRect(ctx,-size/2+2,-size/2+6,size,size,r); ctx.fill(); ctx.fillStyle='#f8f5e3'; ctx.strokeStyle='#e2d9b1'; ctx.lineWidth=2; ctx.beginPath(); roundRect(ctx,-size/2,-size/2,size,size,r); ctx.fill(); ctx.stroke(); if(t.mult===2){ ctx.strokeStyle=getCSS('--dbl'); ctx.lineWidth=7; ctx.shadowColor=ctx.strokeStyle; ctx.shadowBlur=12; ctx.stroke(); ctx.shadowBlur=0; } if(t.mult===3){ ctx.strokeStyle=getCSS('--tpl'); ctx.lineWidth=7; ctx.shadowColor=ctx.strokeStyle; ctx.shadowBlur=12; ctx.stroke(); ctx.shadowBlur=0; } ctx.fillStyle='#111827'; ctx.font='900 22px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(t.letter,0,-2); ctx.font='800 12px ui-sans-serif'; ctx.textAlign='right'; ctx.textBaseline='alphabetic'; ctx.fillText(String(t.points*(t.mult||1)),size/2-6,size/2-6); ctx.restore() }
+function draw(){ ctx.clearRect(0,0,W,H); for(const t of tiles) drawTile(t); ctx.save(); for(const p of catchPops){ const k=1-(p.life/p.max); const r=10+k*24; ctx.globalAlpha=Math.max(0,p.life/p.max); ctx.lineWidth=2; ctx.strokeStyle=p.color||'#22c55e'; ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.stroke(); ctx.font='900 18px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto'; ctx.fillStyle=p.color||'#22c55e'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(p.letter,p.x,p.y) } ctx.restore(); ctx.save(); ctx.fillStyle=getCSS('--warn')||'#f59e0b'; ctx.font='900 28px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto'; ctx.textAlign='center'; ctx.textBaseline='middle'; for(const p of bingoParts) ctx.fillText(p.text,p.x,p.y); ctx.restore() }
+function update(dt){ for(const t of tiles){ t.x+=t.vx*dt; t.y+=t.vy*dt } tiles=tiles.filter(t=>t.y<H+40); for(const p of bingoParts){ p.y+=p.vy*dt; p.life-=dt } bingoParts=bingoParts.filter(p=>p.life>0 && p.y<H+60); for(const p of catchPops){ p.life-=dt; p.y-=20*dt } catchPops=catchPops.filter(p=>p.life>0) }
+function tick(ts){ if(!gameReady){ requestAnimationFrame(tick); return } const dt=Math.min(.05,(ts-lastTS)/1000); lastTS=ts; if(running){ elapsed=Math.min(MAX_TIME,(performance.now()-gameStart)/1000); const sec=Math.floor(elapsed); if(sec>lastSecondShown){ if(sec%5===0 && sec!==0) score-=1; updateHUD(); lastSecondShown=sec } spawnAccum+=dt*1000; if(spawnAccum>SPAWN_EVERY){ spawnAccum=0; spawnTile() } update(dt); draw(); if(elapsed>=MAX_TIME) gameOver() } else { draw() } requestAnimationFrame(tick) }
+requestAnimationFrame(tick);
+
+window.addEventListener('keydown', e=>{ if(!running||!gameReady) return; const k=String(e.key||'').toUpperCase(); if(k.length===1 && k>='A' && k<='Z') handleCollectByLetter(k) });
+function canvasPointFromEvent(ev){ const rect=canvas.getBoundingClientRect(); let x=0,y=0; if(ev.touches&&ev.touches[0]){ x=ev.touches[0].clientX-rect.left; y=ev.touches[0].clientY-rect.top } else { x=ev.clientX-rect.left; y=ev.clientY-rect.top } return {x,y} }
+function tileAtPoint(x,y){ let best=null,bestDist=1e9; const r=TILE_SIZE*.6; for(const t of tiles){ const dx=t.x-x, dy=t.y-y, d2=dx*dx+dy*dy; if(d2<r*r && d2<bestDist){ best=t; bestDist=d2 } } return best }
+function tryCollectAtPoint(x,y){ const t=tileAtPoint(x,y); if(!t) return false; const idx=tiles.indexOf(t); if(idx===-1) return false; collectTileByIndex(idx); return true }
+canvas.addEventListener('pointerdown', e=>{ if(!running||!gameReady) return; const pt=canvasPointFromEvent(e); tryCollectAtPoint(pt.x, pt.y) });
+function handleCollectByLetter(letter){ const idx=closestMatchingTileIndex(letter); if(idx!==-1) collectTileByIndex(idx) }
+function closestMatchingTileIndex(letter){ let best=-1,bestY=-1; for(let i=0;i<tiles.length;i++){ const t=tiles[i]; if(t.letter!==letter) continue; if(t.y>bestY){ best=i; bestY=t.y } } return best }
+function collectTileByIndex(idx){ const t=tiles.splice(idx,1)[0]; spawnCatchPop(t); if(rack.length>=RACK_MAX){ log('Rack full (7).'); updateRackUI(); return } rack.push({letter:t.letter,points:t.points,mult:t.mult,id:t.id}); updateRackUI() }
+
+function rackCountsFrom(tilesArr){ const map={}; for(const t of tilesArr){ map[t.letter]=(map[t.letter]||0)+1 } return map }
+function pickFromLetters(tilesArr, word){ const counts=rackCountsFrom(tilesArr); const used=[], taken=new Set(); for(const ch of word){ if((counts[ch]||0)<=0) continue; const cands=tilesArr.filter(t=>t.letter===ch && !taken.has(t.id)); if(cands.length===0) continue; cands.sort((a,b)=>(b.mult||1)-(a.mult||1)||(b.points||0)-(a.points||0)||String(a.id).localeCompare(String(b.id))); const chosen=cands[0]; used.push(chosen); taken.add(chosen.id); counts[ch]-- } return used }
+function scoreFromTiles(used){ return used.reduce((s,t)=>s+t.points*(t.mult||1),0) }
+function updateProjectedScore(used){
+  try{
+    const el=document.getElementById("projectedScore");
+    if(!el) return;
+    if(!used || used.length<2){ el.textContent="Projected: —"; return; }
+    const pts=scoreFromTiles(used);
+    el.textContent="Projected: "+pts;
+  }catch(_){ }
+}
+
+function pickFromRack(word){ return pickFromLetters(rack, word) }
+function updateRackUI(){ rackBadge.textContent=`Rack: ${rack.length}/7`; rackEl.innerHTML=''; for(const t of rack){ const div=document.createElement('div'); div.className='tile'+(t.mult===2?' dbl':'')+(t.mult===3?' tpl':''); div.innerHTML='<div class="letter">'+t.letter+'</div><div class="points">'+(t.points*(t.mult||1))+'</div>'; rackEl.appendChild(div) } const usedForCurrent=pickFromRack((composeInput.value||'').toUpperCase()); renderChosen(usedForCurrent); updateProjectedScore(usedForCurrent); updateComposeState(); updateRackTools() }
+function updateComposeState(){ const full=rack.length===RACK_MAX; composeHint.textContent=full?(running?'Type your word (min 2 letters).':'Game over.'):'Need 7 letters in rack to compose.'; composeInput.disabled=!full||!running; submitWordBtn.disabled=!full||!running; if(full && running && !lastComposeEnabled){ focusRackCompose(true); try{ composeInput.focus(); }catch(_){ } } if(!full && lastComposeEnabled){ focusRackCompose(false); } lastComposeEnabled=full && running; }
+function updateRackTools(){ const full=rack.length===RACK_MAX; if(btnAlpha){ btnAlpha.disabled=!full; btnAlpha.title=full?'Alphabetize rack A→Z':'Requires full rack (7)' } if(btnShuffle){ btnShuffle.disabled=!full; btnShuffle.title=full?'Shuffle rack randomly':'Requires full rack (7)' } }
+function renderChosen(used){ chosenRack.innerHTML=''; for(const t of used){ const div=document.createElement('div'); div.className='tile compact'+(t.mult===2?' dbl':'')+(t.mult===3?' tpl':''); div.title='Tap to remove'; div.style.cursor='pointer'; div.innerHTML='<div class="letter">'+t.letter+'</div>'; div.addEventListener('click',()=>{ const s=(composeInput.value||'').toUpperCase(); const idx=s.lastIndexOf(t.letter); if(idx!==-1){ composeInput.value=s.slice(0,idx)+s.slice(idx+1); composeInput.dispatchEvent(new Event('input')) } }); chosenRack.appendChild(div) } }
+submitWordBtn.addEventListener('click', ()=>submitWord(composeInput.value));
+composeInput.addEventListener('focus', ()=>focusRackCompose(true));
+composeInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); const s=(composeInput.value||'').trim(); if(s.length===0) return; submitWord(composeInput.value) } });
+composeInput.addEventListener('input', ()=>{ const raw=(composeInput.value||'').toUpperCase().replace(/[^A-Z]/g,''); const used=pickFromRack(raw); const fixed=used.map(u=>u.letter).join(''); if(fixed!==raw) composeInput.value=fixed; renderChosen(used); updateProjectedScore(used) });
+if(btnAlpha){ btnAlpha.addEventListener('click', ()=>{ if(rack.length!==RACK_MAX) return; rack.sort((a,b)=>a.letter.localeCompare(b.letter)); updateRackUI() }) }
+if(btnShuffle){ btnShuffle.addEventListener('click', ()=>{ if(rack.length!==RACK_MAX) return; for(let i=rack.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [rack[i],rack[j]]=[rack[j],rack[i]] } updateRackUI() }) }
+function reduceWeightsForBingo(word){ const seen=new Set(); for(const ch of word){ if(VOWELS.has(ch)) continue; if(seen.has(ch)) continue; seen.add(ch); const cur=LETTER_WEIGHT[ch]||1; LETTER_WEIGHT[ch]=Math.max(.01,cur*.97) } }
+function resetDynamicWeights(){ for(const L of Object.keys(LETTER_WEIGHT)) LETTER_WEIGHT[L]=1 }
+function submitWord(raw){ if(!running){ log('⏹️ Game over — submissions disabled.'); return } const word=(raw||'').toUpperCase().replace(/[^A-Z]/g,''); const used=pickFromRack(word); if(used.length!==word.length || word.length<2){ log('Use only letters from your rack (min 2 letters).'); return } const pts=scoreFromTiles(used); const ok=dictionary.has(word); if(ok){ let bonus=0; if(word.length===7){ bonus=50; spawnBingoRain(); reduceWeightsForBingo(word) } score+=pts+bonus; log(`✅ ${word} +${pts}${bonus?` + BINGO! +${bonus}`:''} points`) } else { score-=pts; log(`❌ ${word} -${pts} (not in dictionary)`) } const usedIds=new Set(used.map(u=>u.id)); rack=rack.filter(t=>!usedIds.has(t.id)); composeInput.value=''; updateRackUI(); updateHUD(); try{ const ps=document.getElementById("projectedScore"); if(ps) ps.textContent="Projected: —"; }catch(_){ } try{ focusRackCompose(false); if(document.activeElement===composeInput){ composeInput.blur(); } window.scrollTo({ top: 0, behavior: 'smooth' }); }catch(_){} }
+function updateHUD(){ scoreBadge.textContent=formatScore(score); const remain=Math.max(0,Math.floor(MAX_TIME-elapsed)); timeBadge.textContent=`Time: ${remain}s` }
+function gameOver(){ running=false; log('⏱️ Time! Final score: '+Math.round(score)+'. No further points can be scored.'); updateComposeState() }
+resetBtn.addEventListener('click', ()=>{ running=true; gameStart=performance.now(); elapsed=0; lastTS=performance.now(); lastSecondShown=-1; spawnAccum=0; tiles=[]; rack=[]; score=START_SCORE; bagIndex=0; bag=shuffle([...DISTRIB_BAG]); resetDynamicWeights(); logEl.textContent=''; bingoParts=[]; catchPops=[]; composeInput.value=''; try{ const b=document.getElementById('lastWordBadge'); if(b){ b.textContent='Last: —'; b.style.borderColor=''; } }catch(_){} try{ const ps=document.getElementById("projectedScore"); if(ps) ps.textContent="Projected: —"; }catch(_){ } updateRackUI(); updateHUD(); try{ focusRackCompose(false); if(document.activeElement===composeInput){ composeInput.blur(); } window.scrollTo({ top: 0, behavior: 'smooth' }); }catch(_){} });
+
+dictBtn.addEventListener('click', ()=>dictFile.click());
+
+// ===== Robust Dictionary Loader (streaming + fallback, encoding detection) =====
+function detectEncodingFromBOM(buffer){
+  const b=new Uint8Array(buffer||[]);
+  if(b.length>=3 && b[0]===0xEF && b[1]===0xBB && b[2]===0xBF) return 'utf-8';
+  if(b.length>=2 && b[0]===0xFF && b[1]===0xFE) return 'utf-16le';
+  if(b.length>=2 && b[0]===0xFE && b[1]===0xFF) return 'utf-16be';
+  return 'utf-8';
+}
+
+async function loadDictFromFile(f){
+  dictionary.clear();
+  dictStatus.textContent='parsing…';
+  dictProg.value=0; dictProg.max=1; dictCount.textContent='0';
+  log('📚 Parsing dictionary…');
+
+  const isJSON=/\.json$/i.test(f.name);
+  if(isJSON){
+    try{
+      const txt=await f.text();
+      const maybe=JSON.parse(txt);
+      if(Array.isArray(maybe)){ for(const w of maybe){ const s=String(w||'').trim(); if(s) dictionary.add(s.toUpperCase()) } }
+      dictStatus.textContent='Loaded ('+dictionary.size.toLocaleString()+' words)';
+      dictCount.textContent=dictionary.size.toLocaleString(); dictProg.max=1; dictProg.value=1; return;
+    }catch(err){ dictStatus.textContent='json parse failed'; log('⚠️ JSON parse failed: '+err.message); return; }
+  }
+
+  const fileSize=f.size;
+  const HEAD=await f.slice(0,3).arrayBuffer();
+  const enc=detectEncodingFromBOM(HEAD);
+  const decoder=new TextDecoder(enc);
+  const CHUNK=1<<20;
+  let leftover='', processedBytes=0, seen=0;
+
+  async function processTextChunk(txt, isLast){
+    txt = txt.replace(/\r\n?|\n/g, '\n');
+    const parts = (leftover + txt).split('\n');
+    leftover = isLast ? '' : (parts.pop() || '');
+    for(const line of parts){
+      const s=line.trim();
+      if(s){ dictionary.add(s.toUpperCase()); seen++; if((seen & 0x7FFF)===0){ dictCount.textContent=dictionary.size.toLocaleString(); await new Promise(r=>setTimeout(r,0)) } }
+    }
+  }
+
+  let usedStreaming=false;
+  if(f.stream && typeof f.stream==='function'){
+    try{
+      const reader=f.stream().getReader();
+      usedStreaming=true;
+      while(true){
+        const {value,done}=await reader.read();
+        if(done) break;
+        if(value){
+          processedBytes += value.byteLength;
+          const txt=decoder.decode(value, {stream:true});
+          await processTextChunk(txt, false);
+          dictProg.max=fileSize||1; dictProg.value=processedBytes;
+        }
+      }
+      await processTextChunk(decoder.decode(), true);
+    }catch(err){ usedStreaming=false; log('⚠️ stream() failed, fallback: '+err.message); }
+  }
+  if(!usedStreaming){
+    let offset=0;
+    while(offset<fileSize){
+      const end=Math.min(fileSize, offset+CHUNK);
+      const buf=await f.slice(offset,end).arrayBuffer();
+      processedBytes=end;
+      const txt=decoder.decode(buf, {stream:end<fileSize});
+      await processTextChunk(txt, end>=fileSize);
+      dictProg.max=fileSize||1; dictProg.value=processedBytes;
+      offset=end;
+      await new Promise(r=>setTimeout(r,0));
+    }
+  }
+  if(leftover){ const s=leftover.trim(); if(s) dictionary.add(s.toUpperCase()) }
+
+  dictStatus.textContent='Loaded ('+dictionary.size.toLocaleString()+' words)';
+  dictCount.textContent=dictionary.size.toLocaleString();
+  log('📚 Loaded dictionary with '+dictionary.size.toLocaleString()+' words.');
+}
+
+document.getElementById('dictFile').addEventListener('change', async e=>{
+  const f=e.target.files && e.target.files[0];
+  if(!f) return;
+  await loadDictFromFile(f);
+  if(!gameReady){ footerMsg.textContent='Timer: 150 seconds · Lose 1 point every 5 seconds • Tap tiles to collect • Compose when rack is full'; gameReady=true; gameStart=performance.now(); lastTS=performance.now(); lastSecondShown=-1; }
+  updateComposeState(); updateRackTools(); updateHUD();
+});
+
+async function autoLoadTWL(){
+  try{
+    const res=await fetch('twl.txt',{cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const txt=await res.text();
+    const words=txt.split(/\r?\n/).map(w=>w.trim()).filter(Boolean);
+    dictionary=new Set(words.map(w=>w.toUpperCase()));
+    dictStatus.textContent='TWL loaded ('+dictionary.size.toLocaleString()+' words)';
+    dictCount.textContent=dictionary.size.toLocaleString();
+    dictProg.max=1; dictProg.value=1;
+    footerMsg.textContent='Timer: 150 seconds · Lose 1 point every 5 seconds • Tap tiles to collect • Compose when rack is full';
+    log('📚 Loaded TWL dictionary with '+dictionary.size.toLocaleString()+' words.');
+    gameReady=true; gameStart=performance.now(); lastTS=performance.now(); lastSecondShown=-1; updateHUD(); updateRackUI(); updateRackTools();
+  }catch(err){
+    dictStatus.textContent='failed — choose file';
+    dictProg.max=1; dictProg.value=0;
+    dictCount.textContent='0';
+    footerMsg.textContent='Dictionary required. Tap "Load Dictionary" and select a word list (txt/json).';
+    log('⚠️ TWL auto-load failed. Waiting for manual dictionary load.');
+    gameReady=false;
+  }
+}
+autoLoadTWL();
+
+updateHUD(); updateRackUI(); log('Loading dictionary…');
+
+function flashLastBadge(){
+  try{
+    const el = document.getElementById('lastWordBadge');
+    if(!el) return;
+    el.classList.remove('flash-badge');
+    // force reflow to restart the animation
+    void el.offsetWidth;
+    el.classList.add('flash-badge');
+    // optional remove after animation end to keep DOM tidy
+    setTimeout(()=>{ el.classList.remove('flash-badge'); }, 600);
+  }catch(e){ /* no-op */ }
+}
+</script>
+
+<script>
+(function(){
+  const composeBoxEl = document.getElementById('composeBox');
+  const zoneLabelEl = document.getElementById('zoneLabel');
+  const zoneTimerEl = document.getElementById('zoneTimer');
+  const submitBtn = document.getElementById('submitWord');
+  const inputEl = document.getElementById('composeInput');
+
+  const Z = { NEUTRAL:'neutral', BLUE:'blue', RED:'red' };
+  let state = Z.NEUTRAL;
+  let endAt = 0;
+  let nextAt = null;
+  const DUR = { blue: 20000, red: 10000 };
+  const GAP_MIN = 12000, GAP_MAX = 24000;
+  let plan = []; // e.g., ['blue','blue','red'] randomized
+
+  function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]]; } return a; }
+  function rand(min,max){ return Math.random()*(max-min)+min; }
+
+  function setClasses(){
+    if(!composeBoxEl) return;
+    composeBoxEl.classList.remove('zone-blue','zone-red');
+    if(state===Z.BLUE) composeBoxEl.classList.add('zone-blue');
+    if(state===Z.RED) composeBoxEl.classList.add('zone-red');
+  }
+  function labelFor(){
+    if(state===Z.NEUTRAL) return 'Word Multiplier: Single';
+    if(state===Z.BLUE) return 'Word Multiplier: Double ×2';
+    return 'Word Multiplier: Triple ×3';
+  }
+  function updateUI(){
+    if(zoneLabelEl) zoneLabelEl.textContent = labelFor();
+    if(zoneTimerEl){
+      if(state===Z.NEUTRAL){ zoneTimerEl.textContent=''; }
+      else {
+        const ms = Math.max(0, endAt - performance.now());
+        zoneTimerEl.textContent = '· ' + Math.ceil(ms/1000) + 's';
+      }
+    }
+    setClasses();
+  }
+  function scheduleNext(base){
+    if(plan.length===0){ nextAt = null; return; }
+    nextAt = base + rand(GAP_MIN, GAP_MAX);
+  }
+  function startNext(now){
+    if(plan.length===0) return;
+    const kind = plan.shift();
+    state = (kind==='blue') ? Z.BLUE : Z.RED;
+    endAt = now + (kind==='blue' ? DUR.blue : DUR.red);
+    updateUI();
+  }
+  function clearNow(now){
+    state = Z.NEUTRAL; endAt = 0;
+    updateUI();
+    scheduleNext(now);
+  }
+
+  function resetPlan(){
+    state = Z.NEUTRAL; endAt = 0;
+    plan = shuffle(['blue','blue','red']);
+    scheduleNext(performance.now());
+    updateUI();
+  }
+
+  // Kick off on DOM ready
+  resetPlan();
+
+  // Lightweight ticker
+  function onFrame(){
+    const now = performance.now();
+    if(state!==Z.NEUTRAL && now >= endAt){
+      clearNow(now);
+    } else if(state===Z.NEUTRAL && nextAt!==null && now >= nextAt){
+      startNext(now);
+    }
+    if(state!==Z.NEUTRAL) updateUI();
+    requestAnimationFrame(onFrame);
+  }
+  requestAnimationFrame(onFrame);
+
+  // When user submits a word, clear multiplier immediately
+  if(submitBtn){
+    submitBtn.addEventListener('click', function(){
+      clearNow(performance.now());
+    }, true); // capture: run before other handlers
+  }
+
+  // Optional: reset the plan when the page has a Reset button with id=resetBtn
+  const resetBtn = document.getElementById('resetBtn');
+  if(resetBtn){
+    resetBtn.addEventListener('click', function(){
+      setTimeout(resetPlan, 0);
+    });
+  }
+})();
+</script>
+</body>
+</html>
