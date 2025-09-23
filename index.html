@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta content="width=device-width, initial-scale=1, interactive-widget=resizes-content" name="viewport" />
+  <title>Let'er Rain</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #0b1220;
+      --ink: #e5e7eb;
+      --muted: #94a3b8;
+      --tile: #fffbe6;
+      --tile-edge: #d4c77a;
+      --t-shadow: rgba(0, 0, 0, 0.35);
+      --dbl: #00e5ff;
+      --tpl: #ff3b30;
+      --accent: #22c55e;
+      --warn: #f59e0b;
+    }
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    html, body {
+      height: 100%;
+    }
+    body {
+      margin: 0;
+      background: radial-gradient(1200px 800px at 70% -10%, #1e293b 0%, var(--bg) 45%);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Arial;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+    header, footer {
+      padding: 10px 12px;
+    }
+    header {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      position: sticky;
+      top: 0;
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.75));
+      z-index: 10;
+    }
+    .badge {
+      padding: 6px 10px;
+      border: 1px solid #334155;
+      border-radius: 999px;
+      background: #0b1220;
+      font-weight: 700;
+      font-size: 12px;
+    }
+    .score {
+      border-color: #14532d;
+    }
+    .time {
+      border-color: #1d4ed8;
+    }
+    .rack {
+      border-color: #8b5cf6;
+    }
+    .controls {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+    }
+    button {
+      appearance: none;
+      border: 1px solid #334155;
+      background: #1f2937;
+      color: var(--ink);
+      padding: 10px 14px;
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 800;
+      font-size: 14px;
+    }
+    button.primary {
+      background: #14532d;
+      border-color: #166534;
+    }
+    button[disabled] {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    main {
+      display: grid;
+      grid-template-rows: 1fr auto;
+      gap: 10px;
+      padding: 10px;
+    }
+    canvas {
+      width: 100%;
+      height: calc(var(--vh, 1vh) * 55);
+      background: linear-gradient(180deg, #0b1220, #0a0f1b);
+      border: 1px solid #1f2937;
+      border-radius: 16px;
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.35);
+      touch-action: manipulation;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid #1f2937;
+      border-radius: 16px;
+      padding: 10px;
+      display: grid;
+      gap: 10px;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .rackTiles {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+    }
+    .tile {
+      aspect-ratio: 1/1;
+      background: var(--tile);
+      border: 2px solid var(--tile-edge);
+      border-radius: 12px;
+      box-shadow: 0 10px 22px var(--t-shadow), inset 0 2px 0 #fff8;
+      display: grid;
+      place-items: center;
+      position: relative;
+      color: #111827;
+    }
+    .tile .letter {
+      font-weight: 900;
+      font-size: 20px;
+    }
+    .tile .points {
+      position: absolute;
+      right: 6px;
+      bottom: 4px;
+      font-weight: 800;
+      font-size: 9px;
+    }
+    .tile.dbl {
+      outline: 6px solid var(--dbl);
+      box-shadow: 0 0 10px var(--dbl);
+    }
+    .tile.tpl {
+      outline: 6px solid var(--tpl);
+      box-shadow: 0 0 10px var(--tpl);
+    }
+    .tile.green {
+      outline: 6px solid var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+    }
+    .muted {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    .log {
+      height: 110px;
+      overflow: auto;
+      background: #0b1220;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 8px;
+      white-space: pre-wrap;
+    }
+    footer {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      color: #94a3b8;
+      font-size: 12px;
+    }
+    .composeBox {
+      background: #0b1220;
+      border: 1px dashed #334155;
+      border-radius: 12px;
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+    }
+    .composeBox h3 {
+      margin: 0;
+    }
+    .composeBox .row {
+      display: flex;
+      gap: 8px;
+    }
+    input[type="text"] {
+      flex: 1;
+      min-width: 0;
+      padding: 12px 12px;
+      background: #0a0f1b;
+      color: var(--ink);
+      border: 1px solid #334155;
+      border-radius: 12px;
+      font-size: 14px;
+      text-transform: uppercase;
+    }
+    input[disabled] {
+      opacity: 0.6;
+    }
+    .rackTiles.compact {
+      grid-template-columns: repeat(7, 28px);
+      gap: 8px;
+      min-height: 112px;
+      overflow: auto;
+      padding: 6px;
+      border: 1px dashed #334155;
+      border-radius: 10px;
+    }
+    .tile.compact .letter {
+      font-size: 11px;
+    }
+    .tile.compact .points {
+      font-size: 7px;
+    }
+    .tile.compact.green {
+      outline: 4px solid var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+    }
+    .hint {
+      font-size: 12px;
+      color: #cbd5e1;
+    }
+    .pill {
+      font-size: 12px;
+      color: #cbd5e1;
+    }
+    .hidden {
+      display: none !important;
+    }
+    progress {
+      height: 12px;
+    }
+    #rackCompose {
+      position: relative;
+      position: sticky;
+      top: 64px;
+      z-index: 5;
+    }
+    #rackCompose.focused {
+      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.35), 0 0 24px rgba(34, 197, 94, 0.25);
+      transition: box-shadow 0.25s ease;
+    }
+    #flashMsg {
+      position: fixed;
+      left: 50%;
+      top: 20%;
+      transform: translateX(-50%);
+      background: rgba(2, 6, 23, 0.85);
+      border: 2px solid #22c55e;
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-weight: 900;
+      font-size: 18px;
+      color: #e5e7eb;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 100;
+    }
+    #flashMsg.show {
+      opacity: 1;
+      animation: flashpop 1100ms ease forwards;
+    }
+    @keyframes flashpop {
+      0% {
+        transform: translateX(-50%) scale(0.95);
+        opacity: 0;
+      }
+      15% {
+        transform: translateX(-50%) scale(1.02);
+        opacity: 1;
+      }
+      85% {
+        transform: translateX(-50%) scale(1.00);
+        opacity: 1;
+      }
+      100% {
+        transform: translateX(-50%) scale(0.98);
+        opacity: 0;
+      }
+    }
+    #lastWordBadge {
+      border-color: #334155;
+    }
+    #lastWordBadge.good {
+      border-color: #166534;
+    }
+    #lastWordBadge.bad {
+      border-color: #7f1d1d;
+    }
+    .flash-badge {
+      animation: lastPulse 0.6s ease-in-out;
+    }
+    @keyframes lastPulse {
+      0% {
+        transform: scale(1);
+        opacity: 0.8;
+      }
+      25% {
+        transform: scale(1.05);
+        opacity: 1;
+      }
+      50% {
+        transform: scale(1);
+      }
+      75% {
+        transform: scale(1.05);
+      }
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="badge score" id="scoreBadge">Score: 0</span>
+    <span class="badge time" id="timeBadge">Time: 150s</span>
+    <span class="badge rack" id="rackBadge">Rack: 0/7</span>
+    <span class="badge" id="lastWordBadge">Last: —</span>
+    <div class="controls">
+      <button id="resetBtn">Reset</button>
+    </div>
+  </header>
+
+  <main>
+    <canvas aria-label="Falling tiles. Tap a tile or type its letter to collect." id="play"></canvas>
+    
+    <section class="panel" id="rackCompose">
+      <h3 style="margin: 0">Rack</h3>
+      <div class="row" id="rackControlsRow">
+        <button id="btnAlpha" title="Alphabetize rack (requires 7 letters)">A→Z</button>
+        <button id="btnShuffle" title="Randomize rack order (requires 7 letters)">Shuffle</button>
+      </div>
+      <div class="rackTiles" id="rack"></div>
+      
+      <div class="composeBox" id="composeBox">
+        <h3>Compose</h3>
+        <div class="row">
+          <input 
+            autocomplete="off" 
+            disabled 
+            id="composeInput" 
+            autocapitalize="characters" 
+            spellcheck="false" 
+            inputmode="latin" 
+            placeholder="Type your word" 
+          />
+          <button class="primary" disabled id="submitWord">Submit</button>
+        </div>
+        <div id="composeProjRow" class="row">
+          <span class="pill" id="projectedScore">Projected: —</span>
+        </div>
+        <div class="rackTiles compact" id="chosenRack"></div>
+        <p class="hint" id="composeHint">Need 7 letters in rack to compose.</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="log" id="log"></div>
+    </section>
+  </main>
+
+  <div id="flashMsg" aria-live="polite"></div>
+
+  <section class="panel" id="dictLoaderPanel">
+    <h3 style="margin: 0">Dictionary</h3>
+    <div class="row">
+      <button id="loadDict">Load Dictionary</button>
+      <input accept=".txt,.json" hidden id="dictFile" type="file" />
+      <span class="hidden" id="dictStatus"></span>
+    </div>
+    <div class="row">
+      <progress id="dictProg" max="1" style="flex: 1;" value="0"></progress>
+      <span class="pill" id="dictCount">0</span>
+    </div>
+  </section>
+
+  <footer>
+    <span id="footerMsg">Loading dictionary...</span>
+  </footer>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

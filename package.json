@@ -1,18 +1,26 @@
 {
   "name": "da-word-rain",
   "version": "1.0.0",
-  "description": "## PoC Versions",
-  "main": "index.js",
+  "description": "A word-based tile collection game",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "tsc --noEmit"
   },
-  "keywords": [],
+  "keywords": ["game", "word", "typescript", "canvas"],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@types/jest": "^30.0.0",
-    "jest": "^30.1.3",
-    "ts-jest": "^29.4.4",
-    "typescript": "^5.9.2"
+    "@types/jest": "^29.5.12",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "ts-jest": "^29.1.5",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8"
   }
 }
