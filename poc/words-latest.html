@@ -12,6 +12,7 @@
   header,footer{padding:10px 12px}
   header{display:flex;gap:8px;align-items:center;flex-wrap:wrap;position:sticky;top:0;background:linear-gradient(180deg, rgba(15,23,42,0.96), rgba(15,23,42,0.75));z-index:10}
   .badge{padding:6px 10px;border:1px solid #334155;border-radius:999px;background:#0b1220;font-weight:700;font-size:12px}
+.level{border-color:#f59e0b;background:#111827;box-shadow:0 0 0 2px rgba(245,158,11,.25)}
   .score{border-color:#14532d}
   .time{border-color:#1d4ed8}
   .rack{border-color:#8b5cf6}
@@ -96,6 +97,7 @@
 </head>
 <body>
 <header>
+<span class="badge level" id="levelBadge">Level: 1</span>
 <span class="badge score" id="scoreBadge">Score: 0</span>
 <span class="badge time" id="timeBadge">Time: 150s</span>
 <span class="badge rack" id="rackBadge">Rack: 0/7</span>
@@ -135,7 +137,6 @@
 'use strict';
 
 function setLastWordBadge(word, delta, bingoBonus){
-  // test comment
   try{
     const b=document.getElementById('lastWordBadge');
     if(!b) return;
@@ -236,6 +237,91 @@ const GREEN_PROB = 0.05;
 const canvas=document.getElementById('play'); const ctx=canvas.getContext('2d');
 const scoreBadge=document.getElementById('scoreBadge'); const timeBadge=document.getElementById('timeBadge'); const rackBadge=document.getElementById('rackBadge'); const rackEl=document.getElementById('rack'); const logEl=document.getElementById('log'); const resetBtn=document.getElementById('resetBtn'); const dictBtn=document.getElementById('loadDict'); const dictFile=document.getElementById('dictFile'); const dictStatus=document.getElementById('dictStatus'); const footerMsg=document.getElementById('footerMsg'); const btnAlpha=document.getElementById('btnAlpha'); const btnShuffle=document.getElementById('btnShuffle'); const composeInput=document.getElementById('composeInput'); const chosenRack=document.getElementById('chosenRack'); const submitWordBtn=document.getElementById('submitWord'); const composeHint=document.getElementById('composeHint'); const dictProg=document.getElementById('dictProg'); const dictCount=document.getElementById('dictCount'); const saveDictBtn=document.getElementById('saveDict');
 
+
+// === Leveling system ===
+const LEVEL_STEP = 20;              // points per level
+const LEVEL_SPEED_INC = 1.10;       // +10% speed when leveling up
+let level = 1;
+let speedMultiplier = 1;            // global speed factor applied only on level-up
+
+function updateLevelBadge(){
+  try{
+    const lb = document.getElementById('levelBadge');
+    if(lb) lb.textContent = `Level: ${level}`;
+  }catch(_){}
+}
+
+function computeLevelFromScore(s){
+  // Level 1 for 0-19, Level 2 for 20-39, etc. Negative scores do not drop below 1.
+  const nonneg = Math.max(0, Math.floor(s||0));
+  return Math.max(1, Math.floor(nonneg/LEVEL_STEP) + 1);
+}
+
+
+// === Level-up specials ===
+let specialEffect = null; // { kind: 'blue'|'red'|'green', remaining: 5 }
+
+function triggerLevelUpSpecial(){
+  try{
+    if(Math.random()<0.33){ spawnSpecialTile(); }
+  }catch(_){}
+}
+
+function spawnSpecialTile(){
+  const kinds = ['blue','red','green'];
+  const kind = kinds[Math.floor(Math.random()*kinds.length)];
+  const speed = rand(SPEED_MIN,SPEED_MAX)*(H/600) * speedMultiplier; // follow level speed
+  const x = rand(W*0.15, W*0.85);
+  let dir = ['up','left','right'][Math.floor(Math.random()*3)];
+let vx = rand(-10,10), vy = speed*0.9;
+// Choose spawn position based on direction so the special actually crosses the playfield
+let sx = x, sy = -36; // defaults
+if(dir==='up'){
+  vy = -speed*0.9;            // go upward
+  sx = rand(W*0.2, W*0.8);    // start somewhere across the width
+  sy = H + 36;                // just below bottom so it travels up through view
+} else if(dir==='left'){
+  vx = -speed*0.9; vy = 0;    // go leftwards
+  sx = W + 36;                // start just off right edge
+  sy = rand(H*0.25, H*0.75);  // mid vertical band so it's visible
+} else if(dir==='right'){
+  vx = speed*0.9; vy = 0;     // go rightwards
+  sx = -36;                   // start just off left edge
+  sy = rand(H*0.25, H*0.75);
+}
+const t = { x:sx, y:sy, vx:vx, vy:vy,
+    zigzag:true, zigzagAxis:(dir==='up'?'x':'y'),
+    zigzagAmp:(dir==='up'? Math.max(60, W*0.18) : Math.max(60, H*0.20)),
+    zigzagFreq:(1.6 + Math.random()*0.6), // ~1.6–2.2 Hz for smooth sway
+    
+    id:genId(), special:true, kind:kind, points:0, mult:1,
+    radiusBoost: 0.8, // 20% smaller
+    zigzag:true, zigzagPhase:Math.random()*Math.PI*2
+  };
+  tiles.push(t);
+  // small top-of-screen text to announce
+  try{ pushFallingText(kind==='blue'?'DOUBLE TROUBLE':(kind==='red'?'RED RAIN':'OVER TIME'), '#f59e0b'); }catch(_){}
+}
+
+function activateSpecialEffect(kind){
+  specialEffect = { kind, remaining: 5 };
+  // brief pop effect in the middle
+  try{ log(`Special active: ${kind} for next ${specialEffect.remaining} tiles`); }catch(_){}
+}
+
+function applyLevelFromScore(){
+  try{
+    const newLevel = computeLevelFromScore(score);
+    if(newLevel > level){
+      const steps = newLevel - level;
+      for(let i=0;i<steps;i++){ speedMultiplier *= LEVEL_SPEED_INC; }
+      level = newLevel;
+      updateLevelBadge();
+      try{ triggerLevelUpSpecial(); }catch(_){ console?.warn?.('Special spawn error', _); }
+    }
+  }catch(_){}
+}
+
 let W=0,H=0; resizeCanvas();
 let running=true, elapsed=0, gameStart=null, lastTS=performance.now(), lastSecondShown=-1, spawnAccum=0, tiles=[], rack=[], score=START_SCORE, bag=shuffle([...DISTRIB_BAG]), bagIndex=0, dictionary=new Set(), gameReady=false, lastComposeEnabled=false;
 
@@ -287,10 +373,22 @@ function spawnTile(){
   const mult=Math.random()<MULTIPLIER_PROB.tpl?3:(Math.random()<MULTIPLIER_PROB.dbl?2:1); 
   const isGreen = Math.random() < GREEN_PROB;
 
-  let speed=rand(SPEED_MIN,SPEED_MAX)*(H/600); 
+  let speed=rand(SPEED_MIN,SPEED_MAX)*(H/600);
+  // Apply ONLY level-based speed multiplier (no time-based acceleration)
+  speed *= speedMultiplier;
   speed*=MULT_SPEED[mult]||1; 
   const x=rand(W*.25,W*.75); 
   const tile={x:x,y:-30,vx:rand(-20,20),vy:speed,letter:L,points:POINTS[L],mult:mult,id:genId(),green:isGreen}; 
+
+  // If a level-up special is active, imbue this tile and decrement counter
+  if(specialEffect){
+    if(specialEffect.kind==='blue'){ tile.mult = 2; }
+    else if(specialEffect.kind==='red'){ tile.mult = 3; }
+    else if(specialEffect.kind==='green'){ tile.green = true; }
+    specialEffect.remaining -= 1;
+    if(specialEffect.remaining <= 0){ specialEffect = null; }
+  }
+
   tiles.push(tile) 
 }
 function roundRect(ctx,x,y,w,h,r){ const rr=Math.min(r,w/2,h/2); ctx.moveTo(x+rr,y); ctx.arcTo(x+w,y,x+w,y+h,rr); ctx.arcTo(x+w,y+h,x,y+h,rr); ctx.arcTo(x,y+h,x,y,rr); ctx.arcTo(x,y,x+w,y,rr) }
@@ -298,6 +396,32 @@ function drawTile(t){
   const size=TILE_SIZE,r=10; 
   ctx.save(); 
   ctx.translate(t.x,t.y); 
+
+  // Special round tiles (spawned on level-up)
+  if(t.special){
+    const R = (TILE_SIZE/2) * (t.radiusBoost||1);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0,0,R,0,Math.PI*2);
+    const color = t.kind==='blue' ? '#1d4ed8' : (t.kind==='red' ? '#dc2626' : '#16a34a');
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.95;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(0,0,0,.35)';
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#f8fafc';
+    ctx.font='900 18px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto';
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+    const label = t.kind==='blue' ? '×2' : (t.kind==='red' ? '×3' : '+TIME');
+    ctx.fillText(label, 0, 1);
+    ctx.restore();
+    ctx.restore();
+    return;
+  }
+
   ctx.fillStyle='rgba(0,0,0,.35)'; 
   ctx.beginPath(); 
   roundRect(ctx,-size/2+2,-size/2+6,size,size,r); 
@@ -347,6 +471,7 @@ function drawTile(t){
   ctx.fillText(String(t.points*(t.mult||1)),size/2-6,size/2-6); 
   ctx.restore() 
 }
+function pushFallingText(text, color){ try{ bingoParts.push({text, x: W/2, y: 60, vy: 30, life: 1.8 }); }catch(_){} }
 function draw(){ 
   ctx.clearRect(0,0,W,H); 
   for(const t of tiles) drawTile(t); 
@@ -379,8 +504,11 @@ function draw(){
   ctx.restore();
 }
 function update(dt){ 
-  for(const t of tiles){ t.x+=t.vx*dt; t.y+=t.vy*dt } 
-  tiles=tiles.filter(t=>t.y<H+40); 
+  for(const t of tiles){
+    if(t.zigzag){ t.zigzagPhase += dt * (t.zigzagFreq ? t.zigzagFreq*2*Math.PI : 10); const sway = Math.sin(t.zigzagPhase) * (t.zigzagAmp || 80) * dt; if(t.zigzagAxis==='x'){ t.x += sway; } else { t.y += sway; } }
+    t.x+=t.vx*dt; t.y+=t.vy*dt }
+ 
+  tiles=tiles.filter(t=> t.y>-40 && t.y<H+40 && t.x>-40 && t.x<W+40 ); 
   for(const p of bingoParts){ p.y+=p.vy*dt; p.life-=dt } 
   bingoParts=bingoParts.filter(p=>p.life>0 && p.y<H+60); 
   for(const p of wordParts){ p.y+=p.vy*dt; p.life-=dt } 
@@ -395,11 +523,7 @@ function tick(ts){
   if(running){ 
     elapsed=Math.min(MAX_TIME,(performance.now()-gameStart)/1000); 
     const sec=Math.floor(elapsed); 
-    if(sec>lastSecondShown){ 
-      if(sec%5===0 && sec!==0) score-=1; 
-      updateHUD(); 
-      lastSecondShown=sec 
-    } 
+    if(sec>lastSecondShown){ updateHUD(); lastSecondShown=sec } 
     spawnAccum+=dt*1000; 
     if(spawnAccum>SPAWN_EVERY){ spawnAccum=0; spawnTile() } 
     update(dt); 
@@ -419,7 +543,9 @@ function tryCollectAtPoint(x,y){ const t=tileAtPoint(x,y); if(!t) return false; 
 canvas.addEventListener('pointerdown', e=>{ if(!running||!gameReady) return; const pt=canvasPointFromEvent(e); tryCollectAtPoint(pt.x, pt.y) });
 function handleCollectByLetter(letter){ const idx=closestMatchingTileIndex(letter); if(idx!==-1) collectTileByIndex(idx) }
 function closestMatchingTileIndex(letter){ let best=-1,bestY=-1; for(let i=0;i<tiles.length;i++){ const t=tiles[i]; if(t.letter!==letter) continue; if(t.y>bestY){ best=i; bestY=t.y } } return best }
-function collectTileByIndex(idx){ const t=tiles.splice(idx,1)[0]; spawnCatchPop(t); if(rack.length>=RACK_MAX){ log('Rack full (7).'); updateRackUI(); return } rack.push({letter:t.letter,points:t.points,mult:t.mult,id:t.id,green:!!t.green}); updateRackUI(); try{ if(rack.length===RACK_MAX && running){ ensureComposeFocus(); } }catch(_){ } }
+function collectTileByIndex(idx){ const t=tiles.splice(idx,1)[0]; if(t && t.special){ activateSpecialEffect(t.kind);
+      try{ catchPops.push({x:W/2,y:80,letter:'SP',life:0.8,max:0.8,color:'#f59e0b'}); }catch(_){}
+      return; } spawnCatchPop(t); if(rack.length>=RACK_MAX){ log('Rack full (7).'); updateRackUI(); return } rack.push({letter:t.letter,points:t.points,mult:t.mult,id:t.id,green:!!t.green}); updateRackUI(); try{ if(rack.length===RACK_MAX && running){ ensureComposeFocus(); } }catch(_){ } }
 
 function rackCountsFrom(tilesArr){ const map={}; for(const t of tilesArr){ map[t.letter]=(map[t.letter]||0)+1 } return map }
 function pickFromLetters(tilesArr, word){ 
@@ -563,13 +689,15 @@ function submitWord(raw){
   if(ok){ 
     let bonus=0; 
     if(word.length===7){ bonus=50; spawnBingoRain(); reduceWeightsForBingo(word) } 
-    score+=pts+bonus; 
+    score+=pts+bonus;
+    applyLevelFromScore(); 
     log(`✅ ${word} +${pts}${bonus?` + BINGO! +${bonus}`:''} points`);
     // NEW: rain the word with its score
     const text = bonus ? `${word} +${pts} (+${bonus})` : `${word} +${pts}`;
     spawnWordRain(text);
   } else { 
-    score-=pts; 
+    score-=pts;
+    applyLevelFromScore(); 
     log(`❌ ${word} -${pts} (not in dictionary)`) 
   } 
 
@@ -594,9 +722,9 @@ function submitWord(raw){
   try{ focusRackCompose(false); if(document.activeElement===composeInput){ composeInput.blur(); } }catch(_){} 
   try{ scrollToTopForce(); requestAnimationFrame(scrollToTopForce); setTimeout(scrollToTopForce, 50); }catch(_){ } 
 }
-function updateHUD(){ scoreBadge.textContent=formatScore(score); const remain=Math.max(0,Math.floor(MAX_TIME-elapsed)); timeBadge.textContent=`Time: ${remain}s` }
+function updateHUD(){ scoreBadge.textContent=formatScore(score); const remain=Math.max(0,Math.floor(MAX_TIME-elapsed)); timeBadge.textContent=`Time: ${remain}s`; updateLevelBadge(); }
 function gameOver(){ running=false; log('⏱️ Time! Final score: '+Math.round(score)+'. No further points can be scored.'); updateComposeState() }
-resetBtn.addEventListener('click', ()=>{ running=true; gameStart=performance.now(); elapsed=0; lastTS=performance.now(); lastSecondShown=-1; spawnAccum=0; tiles=[]; rack=[]; score=START_SCORE; bagIndex=0; bag=shuffle([...DISTRIB_BAG]); resetDynamicWeights(); logEl.textContent=''; bingoParts=[]; wordParts=[]; catchPops=[]; composeInput.value=''; try{ const b=document.getElementById('lastWordBadge'); if(b){ b.textContent='Last: —'; b.style.borderColor=''; } }catch(_){} try{ const ps=document.getElementById("projectedScore"); if(ps) ps.textContent="Projected: —"; }catch(_){ } updateRackUI(); updateHUD(); try{ focusRackCompose(false); if(document.activeElement===composeInput){ composeInput.blur(); } }catch(_){ } });
+resetBtn.addEventListener('click', ()=>{ running=true; level=1; speedMultiplier=1; updateLevelBadge(); gameStart=performance.now(); elapsed=0; lastTS=performance.now(); lastSecondShown=-1; spawnAccum=0; tiles=[]; rack=[]; score=START_SCORE; bagIndex=0; bag=shuffle([...DISTRIB_BAG]); resetDynamicWeights(); logEl.textContent=''; bingoParts=[]; wordParts=[]; catchPops=[]; composeInput.value=''; try{ const b=document.getElementById('lastWordBadge'); if(b){ b.textContent='Last: —'; b.style.borderColor=''; } }catch(_){} try{ const ps=document.getElementById("projectedScore"); if(ps) ps.textContent="Projected: —"; }catch(_){ } updateRackUI(); updateHUD(); try{ focusRackCompose(false); if(document.activeElement===composeInput){ composeInput.blur(); } }catch(_){ } });
 
 dictBtn.addEventListener('click', ()=>dictFile.click());
 
@@ -685,7 +813,7 @@ document.getElementById('dictFile').addEventListener('change', async e=>{
   const f=e.target.files && e.target.files[0];
   if(!f) return;
   await loadDictFromFile(f);
-  if(!gameReady){ footerMsg.textContent='Timer: 150 seconds · Lose 1 point every 5 seconds • Tap tiles to collect • Compose when rack is full'; gameReady=true; gameStart=performance.now(); lastTS=performance.now(); lastSecondShown=-1; }
+  if(!gameReady){ footerMsg.textContent='Timer: 150 seconds • Tap tiles to collect • Compose when rack is full'; gameReady=true; gameStart=performance.now(); lastTS=performance.now(); lastSecondShown=-1; }
   updateComposeState(); updateRackTools(); updateHUD();
   try{ scrollToTopForce(); requestAnimationFrame(scrollToTopForce); setTimeout(scrollToTopForce, 50); }catch(_){ }
 });
@@ -700,9 +828,9 @@ async function autoLoadTWL(){
     dictStatus.textContent='TWL loaded ('+dictionary.size.toLocaleString()+' words)';
     dictCount.textContent=dictionary.size.toLocaleString();
     dictProg.max=1; dictProg.value=1;
-    footerMsg.textContent='Timer: 150 seconds · Lose 1 point every 5 seconds • Tap tiles to collect • Compose when rack is full';
+    footerMsg.textContent='Timer: 150 seconds • Tap tiles to collect • Compose when rack is full';
     log('📚 Loaded TWL dictionary with '+dictionary.size.toLocaleString()+' words.');
-    gameReady=true; gameStart=performance.now(); lastTS=performance.now(); lastSecondShown=-1; updateHUD(); updateRackUI(); updateRackTools();
+    gameReady=true; gameStart=performance.now(); lastTS=performance.now(); lastSecondShown=-1; updateHUD(); updateRackUI(); updateRackTools(); updateLevelBadge();
     try{ scrollToTopForce(); requestAnimationFrame(scrollToTopForce); setTimeout(scrollToTopForce, 50); }catch(_){ }
   }catch(err){
     dictStatus.textContent='failed — choose file';
@@ -715,6 +843,7 @@ async function autoLoadTWL(){
 }
 autoLoadTWL();
 
+updateLevelBadge();
 updateHUD(); updateRackUI(); log('Loading dictionary…');
 
 function flashLastBadge(){
@@ -880,8 +1009,10 @@ if(saveDictBtn){
         if(typeof window.spawnWordRain==='function') spawnWordRain(rainText, kind);
 
         // Apply score
-        if(ok){ window.score=(window.score||0)+pts+bonus; logSafe(`✅ ${word} +${pts}${bonus?` + BINGO! +${bonus}`:''} points`); }
-        else  { window.score=(window.score||0)-pts;        logSafe(`❌ ${word} -${pts} (not in dictionary)`); }
+        if(ok){ window.score=(window.score||0)+pts+bonus;
+        try{ if(typeof window.applyLevelFromScore==='function'){ applyLevelFromScore(); } }catch(_){ } logSafe(`✅ ${word} +${pts}${bonus?` + BINGO! +${bonus}`:''} points`); }
+        else  { window.score=(window.score||0)-pts;
+        try{ if(typeof window.applyLevelFromScore==='function'){ applyLevelFromScore(); } }catch(_){ }        logSafe(`❌ ${word} -${pts} (not in dictionary)`); }
 
         // Apply time delta
         if(timeDelta!==0){
