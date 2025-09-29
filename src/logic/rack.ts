@@ -26,8 +26,10 @@ export class Rack {
     return [...this.tiles];
   }
 
-  addTile(tile: Tile): boolean {
-    if (this.isFull) return false;
+  addTile(tile: Tile): void {
+    if (this.isFull) {
+      throw new Error('Cannot add tile: rack is full');
+    }
 
     const rackTile: RackTile = {
       id: tile.id,
@@ -38,7 +40,6 @@ export class Rack {
     };
 
     this.tiles.push(rackTile);
-    return true;
   }
 
   removeTiles(tileIds: string[]): RackTile[] {

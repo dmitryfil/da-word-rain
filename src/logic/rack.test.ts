@@ -52,9 +52,8 @@ describe('Rack', () => {
   describe('addTile', () => {
     it('should add tiles successfully when not full', () => {
       const tile = createTile('A');
-      const result = rack.addTile(tile);
+      rack.addTile(tile);
       
-      expect(result).toBe(true);
       expect(rack.size).toBe(1);
       
       const tiles = rack.getTiles();
@@ -62,14 +61,15 @@ describe('Rack', () => {
       expect(tiles[0].id).toBe(tile.id);
     });
 
-    it('should reject tiles when full', () => {
+    it('should throw error when rack is full', () => {
       // Fill the rack
       for (let i = 0; i < DEFAULT_CONFIG.RACK_MAX; i++) {
         rack.addTile(createTile(String.fromCharCode(65 + i)));
       }
       
-      const result = rack.addTile(createTile('X'));
-      expect(result).toBe(false);
+      expect(() => {
+        rack.addTile(createTile('X'));
+      }).toThrow('Cannot add tile: rack is full');
       expect(rack.size).toBe(DEFAULT_CONFIG.RACK_MAX);
     });
   });
