@@ -433,9 +433,10 @@ export class Game {
     this.state.tiles.splice(index, 1);
     
     // Add to rack if there's space
-    if (this.rack.addTile(tile)) {
+    try {
+      this.rack.addTile(tile);
       this.effects.spawnCatchPop(tile);
-    } else {
+    } catch (error) {
       this.scoreUI.addLogEntry('Rack full (7).');
     }
   }
